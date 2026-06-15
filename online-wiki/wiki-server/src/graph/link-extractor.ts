@@ -3,6 +3,28 @@ import type { GraphEdge } from './graph-store'
 
 const MD_LINK = /\[([^\]]+)\]\(([^)]+)\)/g
 
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[\s\-_]/g, '')
+}
+
+export function resolveTarget(target: string, knownPages: string[]): string | null {
+  // 精确匹配
+  if (knownPages.includes(target)) {
+    return target
+  }
+
+  // 标题归一化匹配
+  const normalizedTarget = normalize(target)
+  for (const page of knownPages) {
+    const baseName = page.split('/').pop()?.replace(/\.md$/, '') ?? ''
+    if (normalize(baseName) === normalizedTarget) {
+      return page
+    }
+  }
+
+  return null
+}
+
 export function extractLinks(pageId: string, content: string): GraphEdge[] {
   const edges: GraphEdge[] = []
   let match: RegExpExecArray | null
