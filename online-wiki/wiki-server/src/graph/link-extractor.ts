@@ -15,8 +15,10 @@ export function resolveTarget(target: string, knownPages: string[]): string | nu
 
   // 标题归一化匹配
   const normalizedTarget = normalize(target)
+  if (!normalizedTarget) return null
+
   for (const page of knownPages) {
-    const baseName = page.split('/').pop()?.replace(/\.md$/, '') ?? ''
+    const baseName = path.basename(page, '.md')
     if (normalize(baseName) === normalizedTarget) {
       return page
     }
