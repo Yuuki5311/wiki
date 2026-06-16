@@ -64,3 +64,15 @@ export async function deletePage(pageId) {
     });
     handleResponse(res, '删除页面失败');
 }
+export async function listSourceFiles() {
+    const res = await fetch(`${API_BASE}/${WIKI_ID}/sources`, { headers: authHeaders() });
+    handleResponse(res, '获取原文件列表失败');
+    const data = await res.json();
+    return data.files;
+}
+export async function getSourceFile(fileName) {
+    const res = await fetch(`${API_BASE}/${WIKI_ID}/sources/${encodeURIComponent(fileName)}`, { headers: authHeaders() });
+    handleResponse(res, `读取原文件失败: ${fileName}`);
+    const data = await res.json();
+    return data.content;
+}

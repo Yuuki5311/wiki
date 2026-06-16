@@ -84,7 +84,7 @@ export class LocalFileWikiStore implements WikiStore {
     const rawRoot = path.join(this.basePath, wikiId, 'raw')
     try {
       const entries = await fs.readdir(rawRoot)
-      return entries.filter(e => !e.startsWith('.'))
+      return entries.filter(e => !e.startsWith('.') && !e.startsWith('_'))
     } catch {
       return []
     }

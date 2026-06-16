@@ -1,6 +1,6 @@
-import { Network, FileText, Upload } from 'lucide-react'
+import { Network, FileText, Upload, FolderOpen } from 'lucide-react'
 
-type View = 'graph' | 'pages'
+type View = 'graph' | 'pages' | 'sources'
 
 interface NavBarProps {
   view: View
@@ -29,6 +29,15 @@ export function NavBar({ view, onViewChange, onIngestOpen }: NavBarProps) {
       >
         <FileText size={15} />
         页面
+      </button>
+      <button
+        onClick={() => onViewChange('sources')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+          view === 'sources' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+        }`}
+      >
+        <FolderOpen size={15} />
+        原文件
       </button>
       <button
         onClick={onIngestOpen}

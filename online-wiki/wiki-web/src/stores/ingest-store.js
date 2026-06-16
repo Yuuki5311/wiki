@@ -1,33 +1,57 @@
 import { create } from 'zustand';
 import { submitIngest, getJobStatus } from '@/api/wiki-api';
-export const useIngestStore = create((set) => ({
-    jobId: null,
-    status: null,
-    submitting: false,
-    error: null,
-    submit: async (fileName, content) => {
-        set({ submitting: true, error: null, jobId: null, status: null });
-        try {
-            const jobId = await submitIngest(fileName, content);
-            set({ jobId, status: { status: 'queued' }, submitting: false });
-            let attempts = 0;
-            const interval = setInterval(async () => {
-                attempts++;
-                try {
-                    const s = await getJobStatus(jobId);
-                    set({ status: s });
-                    if (s.status === 'done' || s.status === 'error' || attempts >= 24) {
-                        clearInterval(interval);
+import { usePageStore } from './page-store';
+export const useIngestStore = create((set, get) => {
+    // interval 保存在闭包里，reset() 和轮询结束时都能访问它
+    let pollInterval = null;
+    function stopPolling() {
+        if (pollInterval !== null) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+    return {
+        jobId: null,
+        status: null,
+        submitting: false,
+        error: null,
+        submit: async (fileName, content) => {
+            // 提交新任务前先停掉任何残留的旧轮询
+            stopPolling();
+            set({ submitting: true, error: null, jobId: null, status: null });
+            try {
+                const jobId = await submitIngest(fileName, content);
+                set({ jobId, status: { status: 'queued' }, submitting: false });
+                let attempts = 0;
+                pollInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const s = await getJobStatus(jobId);
+                        // 只在 jobId 没变的情况下更新（防止关闭后重开导致状态错位）
+                        if (get().jobId === jobId) {
+                            set({ status: s });
+                        }
+                        if (s.status === 'done' || s.status === 'error' || attempts >= 24) {
+                            stopPolling();
+                            // 导入完成后刷新页面列表，让新页面立即出现
+                            if (s.status === 'done') {
+                                usePageStore.getState().fetchPages();
+                            }
+                        }
                     }
-                }
-                catch {
-                    clearInterval(interval);
-                }
-            }, 5000);
-        }
-        catch (e) {
-            set({ error: String(e), submitting: false });
-        }
-    },
-    reset: () => set({ jobId: null, status: null, submitting: false, error: null }),
-}));
+                    catch {
+                        stopPolling();
+                    }
+                }, 5000);
+            }
+            catch (e) {
+                set({ error: String(e), submitting: false });
+            }
+        },
+        reset: () => {
+            // 关闭对话框时停止轮询，防止后台继续发请求
+            stopPolling();
+            set({ jobId: null, status: null, submitting: false, error: null });
+        },
+    };
+});

@@ -19,7 +19,7 @@ export async function extractRelations(
   knownPages: string[] = [],
 ): Promise<GraphEdge[]> {
   const apiKey = process.env.DEEPSEEK_API_KEY
-  const model = process.env.LLM_MODEL ?? 'deepseek-v4-flash'
+  const model = process.env.LLM_MODEL ?? 'deepseek-chat'
 
   if (!apiKey) return []
 

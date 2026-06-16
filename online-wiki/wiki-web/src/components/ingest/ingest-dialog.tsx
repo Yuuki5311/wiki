@@ -15,6 +15,11 @@ export function IngestDialog({ onClose }: IngestDialogProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      alert('文件大小不能超过 2MB')
+      e.target.value = ''
+      return
+    }
     setFileName(file.name)
     const reader = new FileReader()
     reader.onload = ev => setContent((ev.target?.result as string) ?? '')

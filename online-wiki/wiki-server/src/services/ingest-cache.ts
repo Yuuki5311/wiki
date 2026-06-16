@@ -1,13 +1,6 @@
 import { createHash } from 'crypto'
 import type { WikiStore } from '../storage/wiki-store'
 
-/**
- * SHA256-based ingest cache.
- * 服务端版：原版缓存存在本地 .llm-wiki/ingest-cache.json，
- * 这里改存在 S3（wiki-id/meta/ingest-cache.json）。
- * 核心逻辑和 llm_wiki/src/lib/ingest-cache.ts 一致，只是换了 IO 后端。
- */
-
 interface CacheEntry {
   hash: string
   timestamp: number
@@ -16,7 +9,8 @@ interface CacheEntry {
 
 type CacheData = Record<string, CacheEntry>
 
-const CACHE_PAGE_ID = 'meta/ingest-cache.json'
+// 缓存文件存到 raw/ 目录下，不会被 listPages() 返回，也不会被 wiki 路由暴露
+const CACHE_RAW_FILE = '_ingest_cache.json'
 
 function sha256(content: string): string {
   return createHash('sha256').update(content, 'utf-8').digest('hex')
@@ -24,7 +18,7 @@ function sha256(content: string): string {
 
 async function loadCache(store: WikiStore, wikiId: string): Promise<CacheData> {
   try {
-    const raw = await store.readPage(wikiId, CACHE_PAGE_ID)
+    const raw = await store.readRawFile(wikiId, CACHE_RAW_FILE)
     return JSON.parse(raw) as CacheData
   } catch {
     return {}
@@ -32,7 +26,7 @@ async function loadCache(store: WikiStore, wikiId: string): Promise<CacheData> {
 }
 
 async function saveCache(store: WikiStore, wikiId: string, data: CacheData): Promise<void> {
-  await store.writePage(wikiId, CACHE_PAGE_ID, JSON.stringify(data, null, 2))
+  await store.writeRawFile(wikiId, CACHE_RAW_FILE, JSON.stringify(data, null, 2))
 }
 
 export async function checkIngestCache(
@@ -67,9 +61,8 @@ export async function saveIngestCache(
   pagesWritten: string[],
 ): Promise<void> {
   const cache = await loadCache(store, wikiId)
-  const hash = sha256(sourceContent)
   cache[sourceFileName] = {
-    hash,
+    hash: sha256(sourceContent),
     timestamp: Date.now(),
     pagesWritten,
   }

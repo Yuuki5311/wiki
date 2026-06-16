@@ -128,6 +128,20 @@ ingested_at: YYYY-MM-DD
 ]
 
 async function callTool(tool: string, parameters: Record<string, unknown>) {
+  function validWikiId(id: unknown): id is string {
+    return typeof id === 'string' && /^[\w\-]+$/.test(id)
+  }
+  function validPageId(p: unknown): p is string {
+    if (typeof p !== 'string' || !p) return false
+    if (p.startsWith('/') || p.startsWith('\\')) return false
+    if (p.split('/').some(s => s === '..')) return false
+    if (!/^[\w一-鿿\-./]+$/.test(p)) return false
+    return true
+  }
+  function validFileName(f: unknown): f is string {
+    return typeof f === 'string' && f.length > 0 && !/[/\\]/.test(f) && !f.includes('..')
+  }
+
   switch (tool) {
     case 'search_wiki': {
       const { query, wiki_id, top_k = 5 } = parameters as {
@@ -135,6 +149,8 @@ async function callTool(tool: string, parameters: Record<string, unknown>) {
         wiki_id: string
         top_k?: number
       }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
+      if (typeof query !== 'string' || !query.trim()) throw new Error('query 不能为空')
       const raw = await searchService.search(wiki_id, query, top_k)
       const results = raw.map(r => ({
         path: r.pageId,
@@ -148,12 +164,15 @@ async function callTool(tool: string, parameters: Record<string, unknown>) {
 
     case 'get_page': {
       const { wiki_id, path } = parameters as { wiki_id: string; path: string }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
+      if (!validPageId(path)) throw new Error('无效的页面路径')
       const content = await store.readPage(wiki_id, path)
       return { path, content }
     }
 
     case 'list_pages': {
       const { wiki_id } = parameters as { wiki_id: string }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
       const paths = await store.listPages(wiki_id)
 
       const pages = await Promise.all(
@@ -179,6 +198,9 @@ async function callTool(tool: string, parameters: Record<string, unknown>) {
         file_name: string
         content: string
       }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
+      if (!validFileName(file_name)) throw new Error('无效的文件名')
+      if (typeof content !== 'string' || !content.trim()) throw new Error('content 不能为空')
       const jobId = await ingestQueue.enqueue({
         wikiId: wiki_id,
         sourceFileName: file_name,
@@ -197,19 +219,27 @@ async function callTool(tool: string, parameters: Record<string, unknown>) {
 
     case 'delete_page': {
       const { wiki_id, path } = parameters as { wiki_id: string; path: string }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
+      if (!validPageId(path)) throw new Error('无效的页面路径')
       await store.deletePage(wiki_id, path)
-      await graphStore.removePageFromGraph(wiki_id, path)
+      await Promise.all([
+        graphStore.removePageFromGraph(wiki_id, path),
+        vectorStore.deletePageChunks(wiki_id, path),
+      ])
       return { ok: true, path }
     }
 
     case 'list_source_files': {
       const { wiki_id } = parameters as { wiki_id: string }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
       const files = await store.listRawFiles(wiki_id)
       return { files }
     }
 
     case 'get_source_file': {
       const { wiki_id, file_name } = parameters as { wiki_id: string; file_name: string }
+      if (!validWikiId(wiki_id)) throw new Error('无效的 wiki_id')
+      if (!validFileName(file_name)) throw new Error('无效的文件名')
       const content = await store.readRawFile(wiki_id, file_name)
       return { file_name, content }
     }

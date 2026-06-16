@@ -129,7 +129,9 @@ export class S3WikiStore implements WikiStore {
 
       for (const obj of response.Contents ?? []) {
         if (!obj.Key) continue
-        files.push(obj.Key.slice(prefix.length))
+        const name = obj.Key.slice(prefix.length)
+        if (name.startsWith('_')) continue  // 排除内部文件（如 _ingest_cache.json）
+        files.push(name)
       }
 
       continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined

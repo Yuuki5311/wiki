@@ -90,3 +90,17 @@ export async function deletePage(pageId: string): Promise<void> {
   })
   handleResponse(res, '删除页面失败')
 }
+
+export async function listSourceFiles(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/${WIKI_ID}/sources`, { headers: authHeaders() })
+  handleResponse(res, '获取原文件列表失败')
+  const data = await res.json() as { files: string[] }
+  return data.files
+}
+
+export async function getSourceFile(fileName: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/${WIKI_ID}/sources/${encodeURIComponent(fileName)}`, { headers: authHeaders() })
+  handleResponse(res, `读取原文件失败: ${fileName}`)
+  const data = await res.json() as { content: string }
+  return data.content
+}

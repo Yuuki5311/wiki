@@ -6,3 +6,4 @@ dist/
 .claude/
 *.log
 .DS_Store
+online-wiki/docs/teaching/ 
