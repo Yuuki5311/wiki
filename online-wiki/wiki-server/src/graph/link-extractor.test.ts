@@ -1,4 +1,4 @@
-import { resolveTarget } from './link-extractor'
+import { extractLinks, resolveTarget } from './link-extractor'
 
 describe('resolveTarget', () => {
   const knownPages = [
@@ -23,5 +23,55 @@ describe('resolveTarget', () => {
 
   it('should return null for unknown target', () => {
     expect(resolveTarget('Unknown Page', knownPages)).toBeNull()
+  })
+})
+
+describe('extractLinks with wikilinks', () => {
+  const knownPages = ['wiki/index.md', 'wiki/setup.md', 'wiki/api/auth.md']
+
+  it('should extract [[Title]] wikilink', () => {
+    const content = 'See [[Setup]] for details'
+    const edges = extractLinks('wiki/index.md', content, knownPages)
+    expect(edges).toContainEqual({
+      source: 'wiki/index.md',
+      target: 'wiki/setup.md',
+      relation: '链接',
+      sourceType: 'link',
+    })
+  })
+
+  it('should extract [[path]] wikilink', () => {
+    const content = 'See [[wiki/api/auth.md]] for auth'
+    const edges = extractLinks('wiki/index.md', content, knownPages)
+    expect(edges).toContainEqual({
+      source: 'wiki/index.md',
+      target: 'wiki/api/auth.md',
+      relation: '链接',
+      sourceType: 'link',
+    })
+  })
+
+  it('should extract [[target|alias]] wikilink', () => {
+    const content = 'See [[Setup|installation guide]] here'
+    const edges = extractLinks('wiki/index.md', content, knownPages)
+    expect(edges).toContainEqual({
+      source: 'wiki/index.md',
+      target: 'wiki/setup.md',
+      relation: '链接',
+      sourceType: 'link',
+    })
+  })
+
+  it('should ignore unknown wikilinks', () => {
+    const content = '[[Unknown Page]] does not exist'
+    const edges = extractLinks('wiki/index.md', content, knownPages)
+    expect(edges.length).toBe(0)
+  })
+
+  it('should handle mixed markdown and wikilinks', () => {
+    const content = '[MD Link](setup.md) and [[Setup]] both work'
+    const edges = extractLinks('wiki/index.md', content, knownPages)
+    expect(edges.length).toBe(2)
+    expect(edges.some(e => e.target === 'wiki/setup.md')).toBe(true)
   })
 })

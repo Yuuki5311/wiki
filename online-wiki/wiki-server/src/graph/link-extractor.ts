@@ -2,6 +2,7 @@ import * as path from 'path'
 import type { GraphEdge } from './graph-store'
 
 const MD_LINK = /\[([^\]]+)\]\(([^)]+)\)/g
+const WIKI_LINK = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[\s\-_]/g, '')
@@ -27,11 +28,12 @@ export function resolveTarget(target: string, knownPages: string[]): string | nu
   return null
 }
 
-export function extractLinks(pageId: string, content: string): GraphEdge[] {
+export function extractLinks(pageId: string, content: string, knownPages: string[]): GraphEdge[] {
   const edges: GraphEdge[] = []
   let match: RegExpExecArray | null
   const pageDir = path.dirname(pageId)
 
+  // Markdown 链接（现有逻辑）
   while ((match = MD_LINK.exec(content)) !== null) {
     const href = match[2].trim()
     if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('#')) {
@@ -51,6 +53,20 @@ export function extractLinks(pageId: string, content: string): GraphEdge[] {
       relation: '链接',
       sourceType: 'link',
     })
+  }
+
+  // Wikilink 解析
+  while ((match = WIKI_LINK.exec(content)) !== null) {
+    const target = match[1].trim()
+    const resolved = resolveTarget(target, knownPages)
+    if (resolved) {
+      edges.push({
+        source: pageId,
+        target: resolved,
+        relation: '链接',
+        sourceType: 'link',
+      })
+    }
   }
 
   return edges

@@ -21,7 +21,7 @@ export async function runGraphExtractionWorker(): Promise<never> {
       const knownPages = await wikiStore.listPages(task.wikiId)
 
       const [linkEdges, llmEdges] = await Promise.all([
-        Promise.resolve(extractLinks(task.pageId, task.content)),
+        Promise.resolve(extractLinks(task.pageId, task.content, knownPages)),
         extractRelations(task.pageId, task.title, task.content, knownPages),
       ])
 
