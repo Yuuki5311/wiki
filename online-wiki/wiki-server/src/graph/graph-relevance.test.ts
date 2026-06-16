@@ -102,4 +102,26 @@ describe('computePageWeights', () => {
 
     expect(result[0].weight).toBe(4.0) // signal1: 3.0, signal4: 1.0, no shared source
   })
+
+  it('should parse CRLF frontmatter correctly', async () => {
+    const crlfStore = {
+      readPage: async (_wikiId: string, _pageId: string) => {
+        return '---\r\nsource_file: shared.md\r\n---\r\n# Page'
+      },
+    } as unknown as WikiStore
+
+    const edges: GraphEdge[] = [
+      { source: 'wiki/a.md', target: 'wiki/b.md', relation: '链接', sourceType: 'link' },
+    ]
+    const graph: WikiGraph = {
+      nodes: [{ id: 'wiki/a.md', title: 'A' }, { id: 'wiki/b.md', title: 'B' }],
+      edges: [],
+      updatedAt: '',
+    }
+
+    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, crlfStore)
+
+    // 两页都有 shared.md，signal2: 4.0，signal1: 3.0，signal4: 1.0
+    expect(result[0].weight).toBe(8.0)
+  })
 })

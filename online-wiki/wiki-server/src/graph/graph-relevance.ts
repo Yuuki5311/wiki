@@ -2,7 +2,7 @@ import type { GraphEdge, WikiGraph } from './graph-store'
 import type { WikiStore } from '../storage/wiki-store'
 
 function extractSourceFiles(content: string): string[] {
-  const match = content.match(/^---\n([\s\S]*?)\n---/)
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) return []
   const frontmatter = match[1]
   const sourceFileMatch = frontmatter.match(/^source_file:\s*(.+)$/m)
@@ -32,6 +32,24 @@ export async function computePageWeights(
 ): Promise<GraphEdge[]> {
   const result: GraphEdge[] = []
 
+  // 收集所有涉及的页面 ID
+  const pageIds = new Set<string>()
+  for (const edge of edges) {
+    pageIds.add(edge.source)
+    pageIds.add(edge.target)
+  }
+
+  // 批量读取，缓存结果
+  const contentCache = new Map<string, string>()
+  await Promise.all([...pageIds].map(async (pid) => {
+    try {
+      const content = await store.readPage(wikiId, pid)
+      contentCache.set(pid, content)
+    } catch {
+      // 页面不存在，缓存空内容
+    }
+  }))
+
   for (const edge of edges) {
     let weight = 0
 
@@ -46,19 +64,13 @@ export async function computePageWeights(
       }
     }
 
-    // Signal 2: 共享原文件
-    try {
-      const [sourceContent, targetContent] = await Promise.all([
-        store.readPage(wikiId, edge.source),
-        store.readPage(wikiId, edge.target),
-      ])
-      const sourceSources = new Set(extractSourceFiles(sourceContent))
-      const targetSources = new Set(extractSourceFiles(targetContent))
-      const commonCount = [...sourceSources].filter(s => targetSources.has(s)).length
-      weight += commonCount * 4.0
-    } catch {
-      // 页面不存在或读取失败，signal2 贡献 0
-    }
+    // Signal 2: 共享原文件（从缓存取，不再单独 readPage）
+    const sourceContent = contentCache.get(edge.source) ?? ''
+    const targetContent = contentCache.get(edge.target) ?? ''
+    const sourceSources = new Set(extractSourceFiles(sourceContent))
+    const targetSources = new Set(extractSourceFiles(targetContent))
+    const commonCount = [...sourceSources].filter(s => targetSources.has(s)).length
+    weight += commonCount * 4.0
 
     // Signal 3: Adamic-Adar
     const sourceNeighbors = getNeighbors(edge.source, graph.edges)
