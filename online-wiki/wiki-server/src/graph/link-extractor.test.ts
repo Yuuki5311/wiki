@@ -74,4 +74,17 @@ describe('extractLinks with wikilinks', () => {
     expect(edges.length).toBe(2)
     expect(edges.some(e => e.target === 'wiki/setup.md')).toBe(true)
   })
+
+  it('should work correctly when called multiple times', () => {
+    const knownPages = ['wiki/index.md', 'wiki/setup.md']
+    const content = '[[Setup]] and some text'
+
+    const edges1 = extractLinks('wiki/index.md', content, knownPages)
+    const edges2 = extractLinks('wiki/index.md', content, knownPages)
+
+    expect(edges1.length).toBe(1)
+    expect(edges2.length).toBe(1)
+    expect(edges1[0].target).toBe('wiki/setup.md')
+    expect(edges2[0].target).toBe('wiki/setup.md')
+  })
 })

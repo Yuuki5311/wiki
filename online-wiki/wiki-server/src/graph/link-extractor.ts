@@ -33,6 +33,9 @@ export function extractLinks(pageId: string, content: string, knownPages: string
   let match: RegExpExecArray | null
   const pageDir = path.dirname(pageId)
 
+  MD_LINK.lastIndex = 0
+  WIKI_LINK.lastIndex = 0
+
   // Markdown 链接（现有逻辑）
   while ((match = MD_LINK.exec(content)) !== null) {
     const href = match[2].trim()
