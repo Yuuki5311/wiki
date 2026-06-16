@@ -3,6 +3,7 @@ import { GraphStore } from '../graph/graph-store'
 import { getWikiStore } from '../storage/wiki-store'
 import { extractLinks } from '../graph/link-extractor'
 import { extractRelations } from '../graph/llm-extractor'
+import { computePageWeights } from '../graph/graph-relevance'
 
 const queue = new GraphExtractionQueue()
 const store = new GraphStore()
@@ -19,20 +20,30 @@ export async function runGraphExtractionWorker(): Promise<never> {
 
     try {
       const knownPages = await wikiStore.listPages(task.wikiId)
+      const currentGraph = await store.readGraph(task.wikiId)
 
       const [linkEdges, llmEdges] = await Promise.all([
         Promise.resolve(extractLinks(task.pageId, task.content, knownPages)),
         extractRelations(task.pageId, task.title, task.content, knownPages),
       ])
 
+      const allEdges = [...linkEdges, ...llmEdges]
+      const weightedEdges = await computePageWeights(
+        task.wikiId,
+        task.pageId,
+        allEdges,
+        currentGraph,
+        wikiStore,
+      )
+
       await store.updatePageInGraph(
         task.wikiId,
         task.pageId,
         task.title,
-        [...linkEdges, ...llmEdges],
+        weightedEdges,
       )
 
-      console.log(`[graph-worker] 完成: ${task.pageId}，边数=${linkEdges.length + llmEdges.length}`)
+      console.log(`[graph-worker] 完成: ${task.pageId}，边数=${weightedEdges.length}`)
     } catch (err) {
       console.error(`[graph-worker] 失败: ${task.pageId}`, (err as Error).message)
     }
