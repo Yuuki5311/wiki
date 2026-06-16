@@ -24,7 +24,7 @@ describe('computePageWeights', () => {
       updatedAt: '',
     }
 
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, mockStore)
+    const result = await computePageWeights('test', edges, graph, mockStore)
 
     expect(result[0].weight).toBe(8.0) // signal1: 3.0, signal2: 4.0 (shared doc1.md), signal4: 1.0
   })
@@ -41,7 +41,7 @@ describe('computePageWeights', () => {
       updatedAt: '',
     }
 
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, mockStore)
+    const result = await computePageWeights('test', edges, graph, mockStore)
 
     expect(result[0].weight).toBe(11.0) // signal1: 3.0 + 3.0, signal2: 4.0 (shared doc1.md), signal4: 1.0
   })
@@ -56,7 +56,7 @@ describe('computePageWeights', () => {
       updatedAt: '',
     }
 
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, mockStore)
+    const result = await computePageWeights('test', edges, graph, mockStore)
 
     expect(result[0].weight).toBe(5.0) // signal2: 4.0, signal4: 1.0
   })
@@ -78,7 +78,7 @@ describe('computePageWeights', () => {
       updatedAt: '',
     }
 
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, mockStore)
+    const result = await computePageWeights('test', edges, graph, mockStore)
 
     // B 是公共邻居，degree(B)=2，log(2)≈0.693
     // signal3: 1.5 * (1/0.693) ≈ 2.164
@@ -98,7 +98,7 @@ describe('computePageWeights', () => {
     }
 
     // wiki/c.md has source_file: doc2.md, wiki/a.md has doc1.md — no shared source
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, mockStore)
+    const result = await computePageWeights('test', edges, graph, mockStore)
 
     expect(result[0].weight).toBe(4.0) // signal1: 3.0, signal4: 1.0, no shared source
   })
@@ -119,7 +119,7 @@ describe('computePageWeights', () => {
       updatedAt: '',
     }
 
-    const result = await computePageWeights('test', 'wiki/a.md', edges, graph, crlfStore)
+    const result = await computePageWeights('test', edges, graph, crlfStore)
 
     // 两页都有 shared.md，signal2: 4.0，signal1: 3.0，signal4: 1.0
     expect(result[0].weight).toBe(8.0)

@@ -47,8 +47,9 @@ export function extractLinks(pageId: string, content: string, knownPages: string
 
     // 将相对路径解析为基于仓库根的完整路径
     const resolved = path.posix.normalize(path.posix.join(pageDir, withoutAnchor))
-    // 过滤掉解析后逃出 wiki/ 目录的路径
+    // 过滤掉解析后逃出 wiki/ 目录的路径，以及不存在的目标页面
     if (!resolved.startsWith('wiki/')) continue
+    if (!knownPages.includes(resolved)) continue
 
     edges.push({
       source: pageId,

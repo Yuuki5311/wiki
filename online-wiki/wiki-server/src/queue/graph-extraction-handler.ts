@@ -30,7 +30,6 @@ export async function runGraphExtractionWorker(): Promise<never> {
       const allEdges = [...linkEdges, ...llmEdges]
       const weightedEdges = await computePageWeights(
         task.wikiId,
-        task.pageId,
         allEdges,
         currentGraph,
         wikiStore,

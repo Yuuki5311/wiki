@@ -25,7 +25,6 @@ function getNeighbors(nodeId: string, edges: GraphEdge[]): Set<string> {
 
 export async function computePageWeights(
   wikiId: string,
-  pageId: string,
   edges: GraphEdge[],
   graph: WikiGraph,
   store: WikiStore,
@@ -79,6 +78,7 @@ export async function computePageWeights(
     for (const neighbor of sourceNeighbors) {
       if (targetNeighbors.has(neighbor)) {
         const degree = getDegree(neighbor, graph.edges)
+        // degree >= 2 确保 log(degree) > 0，避免除零
         if (degree >= 2) {
           adamicAdar += 1 / Math.log(degree)
         }
