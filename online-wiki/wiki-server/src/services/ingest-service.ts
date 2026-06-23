@@ -2,6 +2,7 @@ import type { WikiStore } from '../storage/wiki-store'
 import { VectorStore } from '../storage/vector-store'
 import { checkIngestCache, saveIngestCache } from './ingest-cache'
 import { fetchEmbedding, chunkContent } from './embedding-service'
+import { findSimilarPage, mergeContent } from './dedup-service'
 import { GraphExtractionQueue } from '../queue/graph-extraction-queue'
 
 function parseFileBlocks(text: string): Array<{ path: string; content: string }> {
@@ -158,12 +159,21 @@ export async function runIngest(
   const fileBlocks = parseFileBlocks(generated)
   console.log(`[ingest] 解析到 ${fileBlocks.length} 个文件块`)
 
+  // ── 准备去重所需配置 ──
+  const embeddingApiKey = process.env.OPENAI_API_KEY ?? 'ollama'
+  const embedModel = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small'
+  const hasEmbedding = !!embeddingApiKey
+
   const pagesWritten: string[] = []
+  // 记录本轮被合并过的已有页面 → 合并后的内容
+  // 多个新页面可能合并到同一个已有页面，在此累积
+  const mergedExistingPages = new Map<string, string>()
+
+  // ── 1. 写入页面（带去重检查） ──
   for (const block of fileBlocks) {
-    // 注入 source_file frontmatter，保留原有 frontmatter（如有）
+    // 注入 source_file frontmatter
     let content = block.content
     if (content.startsWith('---\n')) {
-      // 已有 frontmatter，在其中插入 source_file
       const endIdx = content.indexOf('\n---\n', 4)
       if (endIdx !== -1) {
         content = content.slice(0, endIdx) + `\nsource_file: ${sourceFileName}` + content.slice(endIdx)
@@ -171,36 +181,106 @@ export async function runIngest(
     } else {
       content = `---\nsource_file: ${sourceFileName}\n---\n\n${content}`
     }
+
+    // 去重检查：对已有页面向量搜索，相似度 > 阈值则触发合并
+    if (hasEmbedding) {
+      const similar = await findSimilarPage(
+        wikiId, block.path, block.content, store, vectorStore,
+        { apiKey: embeddingApiKey, model: embedModel },
+      )
+
+      if (similar.shouldMerge && similar.existingPageId) {
+        const existingId = similar.existingPageId
+        console.log(
+          `[ingest] 🔀 "${block.path}" 与已有 "${existingId}" 相似 ` +
+          `(${(similar.score * 100).toFixed(0)}%)，触发合并`
+        )
+
+        // 读取已有页面（如这轮已合并过，用累积的最新版本）
+        const baseContent = mergedExistingPages.has(existingId)
+          ? mergedExistingPages.get(existingId)!
+          : await store.readPage(wikiId, existingId)
+
+        const merged = await mergeContent(
+          existingId, baseContent, content, sourceFileName,
+        )
+
+        mergedExistingPages.set(existingId, merged)
+        if (!pagesWritten.includes(existingId)) {
+          pagesWritten.push(existingId)
+        }
+        continue
+      }
+    }
+
+    // 不重复 → 正常写入新页面
     await store.writePage(wikiId, block.path, content)
     pagesWritten.push(block.path)
     console.log(`[ingest] 写入: ${block.path}`)
   }
 
-  const embeddingApiKey = process.env.OPENAI_API_KEY ?? 'ollama'
-  if (embeddingApiKey) {
-    for (const block of fileBlocks) {
-      const content = await store.readPage(wikiId, block.path)
-      const chunks = chunkContent(content)
-      const chunksWithEmbeddings = await Promise.all(
-        chunks.map(async (chunk) => ({
-          ...chunk,
-          embedding: await fetchEmbedding(chunk.chunkText, {
-            apiKey: embeddingApiKey,
-            model: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',
-          }),
-        }))
-      )
-      await vectorStore.upsertChunks(wikiId, block.path, chunksWithEmbeddings)
+  // 写入合并后的已有页面
+  for (const [pageId, mergedContent] of mergedExistingPages) {
+    await store.writePage(wikiId, pageId, mergedContent)
+    console.log(`[ingest] 合并写入已有页面: ${pageId}`)
+  }
+
+  // ── 2. 向量索引 ──
+  if (hasEmbedding) {
+    // 合并过的页面：先删旧向量，再按新内容重新分块
+    for (const [pageId, mergedContent] of mergedExistingPages) {
+      await vectorStore.deletePageChunks(wikiId, pageId)
+      const chunks = chunkContent(mergedContent)
+      if (chunks.length > 0) {
+        const chunksWithEmbeddings = await Promise.all(
+          chunks.map(async (chunk) => ({
+            ...chunk,
+            embedding: await fetchEmbedding(chunk.chunkText, {
+              apiKey: embeddingApiKey, model: embedModel,
+            }),
+          }))
+        )
+        await vectorStore.upsertChunks(wikiId, pageId, chunksWithEmbeddings)
+      }
+      console.log(`[ingest] 合并页面向量已更新: ${pageId}`)
+    }
+
+    // 新页面：正常分块向量化（排除已被判定合并的路径）
+    const mergedPathSet = new Set(mergedExistingPages.keys())
+    const newBlocks = fileBlocks.filter(b => !mergedPathSet.has(b.path))
+    for (const block of newBlocks) {
+      let pageContent: string
+      try {
+        pageContent = await store.readPage(wikiId, block.path)
+      } catch {
+        continue // 页面写入失败则跳过
+      }
+      const chunks = chunkContent(pageContent)
+      if (chunks.length > 0) {
+        const chunksWithEmbeddings = await Promise.all(
+          chunks.map(async (chunk) => ({
+            ...chunk,
+            embedding: await fetchEmbedding(chunk.chunkText, {
+              apiKey: embeddingApiKey, model: embedModel,
+            }),
+          }))
+        )
+        await vectorStore.upsertChunks(wikiId, block.path, chunksWithEmbeddings)
+      }
     }
     console.log(`[ingest] 向量索引已更新`)
   } else {
-    console.log(`[ingest] 未配置 OPENAI_API_KEY，跳过向量索引`)
+    console.log(`[ingest] 未配置 OPENAI_API_KEY，跳过向量索引和去重`)
   }
 
+  // ── 3. 保存缓存 ──
   await saveIngestCache(store, wikiId, sourceFileName, sourceContent, pagesWritten)
 
+  // ── 4. 图谱提取队列 ──
   const graphQueue = new GraphExtractionQueue()
+  // 新页面（排除被合并跳过的）
   for (const block of fileBlocks) {
+    if (mergedExistingPages.has(block.path)) continue
     await graphQueue.enqueue({
       wikiId,
       pageId: block.path,
@@ -208,7 +288,18 @@ export async function runIngest(
       content: block.content,
     })
   }
-  console.log(`[ingest] 已提交 ${fileBlocks.length} 个图谱提取任务`)
+  // 合并过的已有页面（内容变了，需重建图谱连线）
+  for (const [pageId, mergedContent] of mergedExistingPages) {
+    await graphQueue.enqueue({
+      wikiId,
+      pageId,
+      title: pageId.replace(/\.md$/, '').split('/').pop() ?? pageId,
+      content: mergedContent,
+    })
+  }
+  const graphTaskCount = fileBlocks.filter(b => !mergedExistingPages.has(b.path)).length
+    + mergedExistingPages.size
+  console.log(`[ingest] 已提交 ${graphTaskCount} 个图谱提取任务`)
 
   return { pagesWritten, skipped: false }
 }
